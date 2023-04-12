@@ -53,10 +53,7 @@ def loadJSON(filepath):
 
             entry = [i for i in n3.values()]
             
-            if len(entry)==6:
-                ts=entry[5]
-            elif len(entry)==7:
-                ts=entry[6]
+            ts = n3["timestamp"]
                 
             utc=ts.replace('Z', '')
             
@@ -104,56 +101,25 @@ def parseByDay(df):
     print("Converting to daily data summary (UTC to avoid travel/timezone complications)...")
 
     ##Aggregate by date
-    pd_dt=pd.to_datetime(df['utc_dt'], infer_datetime_format=True)
+    pd_dt = pd.to_datetime(df['utc_dt'], infer_datetime_format=False, utc=True)
 
-    #Calculate max poss distance (minlat, minlong)-->(maxlat, maxlong)
+    # Calculate max poss distance (minlat, minlong)-->(maxlat, maxlong)
 
-    temp=[df.lat, pd_dt]
-    hds=["lat","date"]
-    dflat= pd.concat(temp, axis=1, keys=hds)
-    dailylatmin=dflat.resample('D', on='date').min().to_numpy()
-    dailylatmax=dflat.resample('D', on='date').max().to_numpy()
-
-
-    temp=[df.long,  pd_dt]
-    hds=["long", "date"]
-    dflong= pd.concat(temp, axis=1, keys=hds)
-    dailylongmin=dflong.resample('D', on='date').min().to_numpy()
-    dailylongmax=dflong.resample('D', on='date').max().to_numpy()
-
-    temp=[df.deltaz, pd_dt]
+    temp = [df.deltaz, pd_dt]
     hds = ["deltaz", "date"]
     dfdz = pd.concat(temp, axis=1, keys=hds)
-    dailysumdist=dfdz.resample('D', on='date').sum().to_numpy()
 
-    dlatmin=dailylatmin[:, 0].astype('float')
-    dlatmax=dailylatmax[:, 0].astype('float')
-    dlongmin=dailylongmin[:, 0].astype('float')
-    dlongmax=dailylongmax[:, 0].astype('float')
-    dsumdist=dailysumdist[:, 0].astype('float')
-    dates=dailylatmin[:, 1]
+    dailysumdist = dfdz.groupby(dfdz.date.dt.date)["deltaz"].sum().reset_index()
+    dsumdist = dailysumdist["deltaz"].astype('float')
+    dates = dailysumdist["date"]
 
-    nonanndx=np.where(~np.isnan(dlatmin))
-
-    dlatmin=dlatmin[nonanndx]
-    dlatmax=dlatmax[nonanndx]
-    dlongmin=dlongmin[nonanndx]
-    dlongmax=dlongmax[nonanndx]
-    dates=dates[nonanndx]
-    dsumdist=dsumdist[nonanndx]
-
-    maxdist=np.empty(len(dlatmin))
-    for i in range(0, dlatmin.size):
-        coords_1=(dlatmin[i], dlongmin[i])
-        coords_2=(dlatmax[i], dlongmax[i])
-        maxdist[i]=geopy.distance.geodesic(coords_1, coords_2).km
-
-    temp=np.vstack((dates, maxdist, dsumdist)).transpose()   
-    daily_dist=pd.DataFrame(data=temp, columns=['date', 'maxdist_km', 'sumdist_km'])
-    dailydfname=os.path.join(filepath2, 'dist_by_day.pkl')
+    temp = np.vstack((dates, dsumdist)).transpose()
+    daily_dist = pd.DataFrame(data=temp, columns=['date', 'sumdist_km'])
+    dailydfname = os.path.join(filepath2, 'dist_by_day.pkl')
     daily_dist.to_pickle(dailydfname)
-    
-    return(daily_dist)
+
+    return (daily_dist)
+
 
 def plotData(daily_dist, median_window, mean_window, iftext):
 
